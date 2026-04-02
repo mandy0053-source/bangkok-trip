@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>🎀 曼谷旅遊規劃</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #FFF0F5;
+      background-image: radial-gradient(circle, #FFD6E7 1.2px, transparent 1.2px);
+      background-size: 22px 22px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: #FFB7D1; border-radius: 4px; }
+    input, select, textarea, button { font-family: inherit; }
+    @keyframes popIn { from{opacity:0;transform:scale(0.88)} to{opacity:1;transform:scale(1)} }
+    @keyframes slideDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:translateY(0)} }
+    .modal-overlay {
+      position:fixed;inset:0;
+      background:rgba(255,79,130,0.18);
+      backdrop-filter:blur(5px);
+      z-index:200;
+      display:flex;align-items:center;justify-content:center;padding:20px;
+    }
+    .modal-box {
+      background:white;border-radius:26px;padding:22px;
+      width:100%;max-width:390px;
+      border:2.5px solid #FFB7D1;
+      box-shadow:0 10px 50px rgba(255,79,130,0.28);
+      animation:popIn 0.22s ease;
+    }
+    .kitty-btn {
+      background:linear-gradient(135deg,#FF4F82,#D63672);
+      color:white;border:none;border-radius:16px;
+      padding:12px;font-size:14px;font-weight:800;
+      cursor:pointer;width:100%;
+    }
+    .kitty-btn:active { opacity:0.85; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useEffect } = React;
+
+// ══ 班機設定（若時間不符，請修改 FLIGHT_DEPART_TPE）══
+const FLIGHT_DATE = "2026-05-01";
+const FLIGHT_NO   = "SL399";
+const FLIGHT_DEPART_TPE = "09:35"; // 台灣桃園機場出發時間
+
+// ══ Hello Kitty 主題色 ══
+const HK = {
+  bg:"#FFF0F5", card:"#FFFFFF", border:"#FFB7D1",
+  primary:"#FF4F82", primaryDark:"#D63672",
+  light:"#FFB7D1", ultraLight:"#FFE8F0",
+  grad:"linear-gradient(135deg,#FF4F82,#FF8FAB 60%,#FFBDD0)",
+  gradDark:"linear-gradient(135deg,#D63672,#FF4F82)",
+  text:"#7A1230", textMid:"#C94577", textLight:"#E8799A",
+  green:"#22C55E", greenBg:"#F0FDF4",
+  shadow:"0 2px 16px rgba(255,79,130,0.10)",
+  shadowHover:"0 4px 24px rgba(255,79,130,0.18)",
+};
+
+// ══ localStorage 工具（找不到則用記憶體）══
+const LS = {
+  get(k,fb){try{const v=localStorage.getItem(k);return v!==null?JSON.parse(v):fb;}catch{return fb;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}},
+};
+
+// ══ 分享碼（支援中文 Unicode）══
+function makeShareCode(data){
+  try{return btoa(unescape(encodeURIComponent(JSON.stringify(data))));}
+  catch{return "";}
+}
+function parseShareCode(code){
+  try{
+    const data=JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+    return(data.items&&Array.isArray(data.items))?data:null;
+  }catch{return null;}
+}
+
+// ══ 班機提醒判斷 ══
+function shouldShowFlightReminder(){
+  try{
+    const tw=new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Taipei"}));
+    const twDate=tw.toISOString().split("T")[0];
+    if(twDate!==FLIGHT_DATE)return false;
+    const[dh,dm]=FLIGHT_DEPART_TPE.split(":").map(Number);
+    const diff=(dh*60+dm)-(tw.getHours()*60+tw.getMinutes());
+    return diff>=0&&diff<=240;
+  }catch{return false;}
+}
+
+// ══ 景點知識庫 ══
+const ATTRACTION_KB=[
+  {match:["grand palace","大皇宮","王宮"],emoji:"👑",name:"大皇宮",
+   history:"大皇宮建於 1782 年，由拉瑪一世興建，是泰國卻克里王朝遷都曼谷後的首座皇宮，佔地逾 21.8 萬平方公尺。宮殿群融合泰式、歐式與中式建築，是泰國王室舉辦重要儀式的場所，迄今已逾 240 年歷史。",
+   funFacts:["宮內玉佛寺的翡翠玉佛高僅約 66 公分，卻是泰國最神聖的佛像","玉佛袍服一年由國王親自換裝三次，分別對應旱、雨、涼三季","整座大皇宮由逾 100 棟建築組成","建城前曼谷僅是昭披耶河畔一個小漁村"]},
+  {match:["wat pho","臥佛","臥佛寺"],emoji:"🛕",name:"臥佛寺",
+   history:"臥佛寺是曼谷最古老的寺廟之一，歷史早於曼谷建城，可追溯至大城王朝（約 17 世紀）。寺中供奉長達 46 公尺、全身貼金的巨型臥佛，腳底以 108 塊珍珠母貝拼成佛陀吉祥紋樣。",
+   funFacts:["臥佛寺是泰式傳統按摩的發源地，寺內至今設有按摩學校","臥佛四周有 108 個銅碗，逐一投幣可祈求好運","寺廟面積達 8 萬平方公尺，是曼谷最大的廟宇","含早餐的按摩課程至今仍在此開辦，傳承逾百年"]},
+  {match:["wat arun","鄭王廟","黎明寺"],emoji:"🌅",name:"鄭王廟",
+   history:"鄭王廟（Wat Arun）以印度黎明之神「阿魯那」命名，主塔高達 67 公尺，是昭披耶河畔最具代表性的地標。塔身以彩色中國瓷片裝飾，為 19 世紀貿易商船帶來的壓艙瓷器。",
+   funFacts:["塔面瓷片多來自中國南京，是 19 世紀貿易船的壓艙貨物","鄭王廟曾短暫供奉現存於玉佛寺的翡翠玉佛","日落時分從河對岸拍攝是最經典的構圖","塔身有眾多力士石雕，均為中國風格造型"]},
+  {match:["wat phra kaew","玉佛寺","玉佛"],emoji:"💎",name:"玉佛寺",
+   history:"玉佛寺位於大皇宮建築群內，是泰國最神聖的佛教聖地。主殿供奉的翡翠玉佛據考證為 15 世紀清萊省出土的文物，1784 年才由拉瑪一世迎回泰國。",
+   funFacts:["玉佛的真實材質為玉石（碧玉），並非翡翠","只有泰國國王才能親手為玉佛更換袍服","寺廟四周走廊繪有全本《羅摩衍那》壁畫，共 178 幅","整座寺廟至今仍是活躍的皇家宗教場所"]},
+  {match:["chatuchak","恰圖恰","週末市集","jj market"],emoji:"🛍️",name:"恰圖恰週末市集",
+   history:"恰圖恰市集成立於 1942 年，如今發展為全球最大的週末市集之一，佔地超過 14 公頃，設有逾 8,000 個攤位，週末單日訪客可達 20 萬人。",
+   funFacts:["市集內有完整的街道編號系統，建議入口處索取地圖","部分攤商已傳承三代以上","區域 2–4 以古董、藝術品聞名","寵物區（Section 13）有多國珍稀動物"]},
+  {match:["boat noodle","船麵","勝利紀念碑"],emoji:"🍜",name:"船麵巷",
+   history:"泰式船麵（Kuay Teow Rua）起源於大城王朝時期（1350–1767 年），小販在水上市場的船隻中烹調販賣，小碗設計是為了方便在船上盛裝。",
+   funFacts:["正宗船麵以豬血為湯底，賦予濃郁深色湯汁","小碗設計源自船上空間限制，傳統一人吃 4–6 碗","湯頭以五香、桂皮熬製，是東南亞特有的香料組合","現代曼谷約有數十家船麵老店"]},
+  {match:["siam paragon","暹羅百麗宮","siam"],emoji:"🏬",name:"暹羅百麗宮",
+   history:"暹羅百麗宮開幕於 2005 年，坐落於曼谷最繁榮的暹羅商圈，建築面積達 50 萬平方公尺，地下樓層設有東南亞最大水族館之一「Siam Ocean World」。",
+   funFacts:["Siam Ocean World 水族館擁有超過 400 種逾 3 萬隻海洋生物","百麗宮 B1 超市是採購泰國特產伴手禮的必訪地點","購物中心擁有 10 個電影廳，包含 IMAX 影廳","暹羅站（BTS）直通購物中心"]},
+  {match:["bts","空鐵","捷運","skytrain"],emoji:"🚇",name:"BTS 空鐵",
+   history:"曼谷大眾捷運系統（BTS Skytrain）於 1999 年 12 月通車，是曼谷首條都市捷運，以高架軌道規避地面嚴重的交通擁堵問題。目前共有暹羅線與蘇坤蔚線兩條主線。",
+   funFacts:["曼谷 BTS 是東南亞最繁忙的城市鐵路之一，單日運量逾百萬人次","Rabbit Card 儲值卡可同時用於 BTS、部分公車與便利商店消費","每逢皇家節慶，BTS 常提供免費或優惠搭乘","曼谷 MRT 地鐵（藍線）與 BTS 部分站點互通換乘"]},
+];
+function getAttractionInfo(name){if(!name)return null;const l=name.toLowerCase();return ATTRACTION_KB.find(k=>k.match.some(m=>l.includes(m)))||null;}
+
+const WMO={0:{icon:"☀️",desc:"晴天"},1:{icon:"🌤️",desc:"大致晴"},2:{icon:"⛅",desc:"局部多雲"},3:{icon:"☁️",desc:"陰天"},45:{icon:"🌫️",desc:"起霧"},48:{icon:"🌫️",desc:"霧"},51:{icon:"🌦️",desc:"輕毛毛雨"},53:{icon:"🌦️",desc:"毛毛雨"},55:{icon:"🌧️",desc:"濃毛毛雨"},61:{icon:"🌧️",desc:"輕雨"},63:{icon:"🌧️",desc:"中雨"},65:{icon:"🌧️",desc:"大雨"},80:{icon:"🌦️",desc:"輕陣雨"},81:{icon:"🌧️",desc:"中陣雨"},82:{icon:"⛈️",desc:"強陣雨"},95:{icon:"⛈️",desc:"雷陣雨"},96:{icon:"⛈️",desc:"雷雨夾雹"},99:{icon:"⛈️",desc:"強雷雨"}};
+function wmo(c){return WMO[c]||WMO[Math.floor(c/10)*10]||{icon:"🌡️",desc:"未知"};}
+
+const MY_MAPS_LISTS=[
+  {name:"泰好玩",icon:"🏛️",color:"#e879f9",bg:"#fdf4ff",url:"https://maps.app.goo.gl/7zY99eFKi53x1JaX8",desc:"景點清單"},
+  {name:"泰好買",icon:"🛍️",color:"#f472b6",bg:"#fdf2f8",url:"https://maps.app.goo.gl/7zY99eFKi53x1JaX8",desc:"購物清單"},
+  {name:"泰美味",icon:"🍜",color:"#fb923c",bg:"#fff7ed",url:"https://maps.app.goo.gl/8imFGiUm9DnTDuDRA",desc:"美食清單"},
+];
+
+const THAI_FESTIVALS=[
+  {date:"2026-01-01",name:"元旦 New Year's Day",icon:"🎊",type:"holiday",warnings:["國定假日，主要景點正常開放"],alcoholRestriction:false,dressWarning:false},
+  {date:"2026-03-03",name:"萬佛節 Makha Bucha Day",icon:"🙏",type:"buddhist",warnings:["🚫 全國禁止販售酒精","寺廟晚間繞燭儀式，非常值得觀賞"],alcoholRestriction:true,dressWarning:true},
+  {date:"2026-04-06",name:"節基王朝紀念日",icon:"👑",type:"holiday",warnings:["國定假日"],alcoholRestriction:false,dressWarning:false},
+  {date:"2026-04-13",name:"宋干節 Day 1 🌊",icon:"💦",type:"songkran",warnings:["🚨 全城水戰！請保護電子設備","建議穿可弄濕衣物"],alcoholRestriction:false,dressWarning:false},
+  {date:"2026-04-14",name:"宋干節 Day 2 🌊（最激烈）",icon:"💦",type:"songkran",warnings:["🚨 水戰最激烈！電子產品務必防水"],alcoholRestriction:false,dressWarning:false},
+  {date:"2026-04-15",name:"宋干節 Day 3 🌊",icon:"💦",type:"songkran",warnings:["水戰尾聲，商店陸續恢復"],alcoholRestriction:false,dressWarning:false},
+  {date:"2026-05-01",name:"勞動節 Labour Day",icon:"🏗️",type:"holiday",warnings:["國定假日，主要景點正常開放"],alcoholRestriction:false,dressWarning:false},
+  {date:"2026-05-31",name:"衛塞節 Visakha Bucha Day",icon:"🙏",type:"buddhist",warnings:["🚫 全國禁止販售酒精","佛教最重要節日，寺廟極度擁擠"],alcoholRestriction:true,dressWarning:true},
+  {date:"2026-07-28",name:"國王誕辰",icon:"👑",type:"holiday",warnings:["國定假日"],alcoholRestriction:false,dressWarning:false},
+  {date:"2026-10-13",name:"拉瑪九世紀念日",icon:"🖤",type:"memorial",warnings:["🖤 請著深色服裝","部分娛樂場所關閉"],alcoholRestriction:false,dressWarning:true},
+  {date:"2026-12-31",name:"跨年夜 New Year's Eve",icon:"🎆",type:"festival",warnings:["Central World 跨年煙火秀","全市人潮擁擠，提早出發"],alcoholRestriction:false,dressWarning:false},
+];
+const TEMPLE_TIP="⚠️ 進入寺廟需覆蓋肩膀和膝蓋，可在門口租借沙龍（約20泰銖）";
+
+const CATEGORIES={attraction:{label:"景點",icon:"🏛️",color:"#e879f9"},food:{label:"美食",icon:"🍜",color:"#f97316"},transport:{label:"交通",icon:"🚇",color:"#22c55e"},hotel:{label:"住宿",icon:"🏨",color:"#a855f7"},shopping:{label:"購物",icon:"🛍️",color:"#ec4899"}};
+const TRANSPORT_MODES={transit:"🚇 大眾交通",driving:"🚗 開車",walking:"🚶 步行",bicycling:"🚲 騎車"};
+
+const INITIAL_ITEMS=[
+  {id:1,name:"大皇宮 Grand Palace",category:"attraction",address:"Na Phra Lan Rd, Phra Nakhon, Bangkok",date:"2026-05-02",time:"09:00",notes:"需穿長褲或長裙，不可短褲無袖。門票500泰銖。",transportMode:"transit",openTime:"08:30",closeTime:"15:30",openDays:"",closedWeekdays:false,isDressCodeRequired:true,recommendedVisitTime:"早上08:30開門時第一個進入，避開人潮；正午極熱請自備水"},
+  {id:2,name:"臥佛寺 Wat Pho",category:"attraction",address:"2 Sanam Chai Rd, Phra Nakhon, Bangkok",date:"2026-05-02",time:"11:00",notes:"離大皇宮步行約10分鐘，門票200泰銖，含免費薑茶一杯。",transportMode:"walking",openTime:"08:00",closeTime:"18:30",openDays:"",closedWeekdays:false,isDressCodeRequired:true,recommendedVisitTime:"上午08:00–10:00人潮最少；下午16:00後光線適合拍照"},
+  {id:3,name:"船麵巷 Boat Noodle Alley",category:"food",address:"Victory Monument BTS Station, Bangkok",date:"2026-05-02",time:"13:00",notes:"一碗約15–20泰銖，必點豬血湯底！一人約吃3–5碗。",transportMode:"transit",openTime:"10:30",closeTime:"20:00",openDays:"",closedWeekdays:false,isDressCodeRequired:false,recommendedVisitTime:"午餐10:30–13:00或下午15:00–17:00（非尖峰）"},
+  {id:4,name:"暹羅百麗宮 Siam Paragon",category:"shopping",address:"991 Rama I Rd, Pathum Wan, Bangkok",date:"2026-05-03",time:"14:00",notes:"B1超市可買零食伴手禮，地下美食街選擇多。頂層有水族館。",transportMode:"transit",openTime:"10:00",closeTime:"22:00",openDays:"",closedWeekdays:false,isDressCodeRequired:false,recommendedVisitTime:"平日下午14:00–17:00最舒適，週末避免12:00–15:00人潮"},
+  {id:5,name:"BTS 空鐵",category:"transport",address:"BTS Skytrain Bangkok",date:"2026-05-01",time:"08:30",notes:"購買Rabbit Card儲值卡更划算。單程16–59泰銖。",transportMode:"transit",openTime:"06:00",closeTime:"00:00",openDays:"",closedWeekdays:false,isDressCodeRequired:false,recommendedVisitTime:"避開上班尖峰（07:30–09:00、17:30–19:00）"},
+  {id:6,name:"鄭王廟 Wat Arun",category:"attraction",address:"158 Wang Doem Rd, Wat Arun, Bangkok Yai",date:"2026-05-04",time:"16:30",notes:"可爬上主塔俯瞰昭披耶河，日落景色極佳。門票100泰銖。",transportMode:"transit",openTime:"08:00",closeTime:"18:00",openDays:"",closedWeekdays:false,isDressCodeRequired:true,recommendedVisitTime:"強烈推薦日落前1小時（約17:00），光線最美可拍夕陽"},
+  {id:7,name:"恰圖恰週末市集 Chatuchak",category:"shopping",address:"Chatuchak Park, Kamphaeng Phet 2 Rd, Bangkok",date:"2026-05-02",time:"09:00",notes:"全球最大週末市集！超過8,000個攤位，分區明確建議下載地圖。",transportMode:"transit",openTime:"09:00",closeTime:"18:00",openDays:"僅週六、週日",closedWeekdays:true,isDressCodeRequired:false,recommendedVisitTime:"早上09:00–11:00涼爽且人少；正午極熱，下午16:00再去"},
+];
+
+let nextId=LS.get("bkk_nextId",INITIAL_ITEMS.length+1);
+
+// ══ 時間工具 ══
+function getBangkokNow(){try{return new Date(new Date().toLocaleString("en-US",{timeZone:"Asia/Bangkok"}));}catch{return new Date();}}
+function getBangkokDateStr(){try{return new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Bangkok"});}catch{return new Date().toISOString().split("T")[0];}}
+function getBangkokTimeStr(){const n=getBangkokNow();return String(n.getHours()).padStart(2,"0")+":"+String(n.getMinutes()).padStart(2,"0");}
+function timeToMin(t){if(!t)return null;const p=t.split(":");return parseInt(p[0])*60+parseInt(p[1]);}
+function getOpenStatus(item){
+  if(!item.openTime&&!item.closeTime)return"unknown";
+  if(item.closedWeekdays){const d=getBangkokNow().getDay();if(d!==0&&d!==6)return"closed_today";}
+  const cur=timeToMin(getBangkokTimeStr()),open=timeToMin(item.openTime),close=timeToMin(item.closeTime);
+  if(cur===null)return"unknown";
+  return(cur>=open&&cur<(close===0?1440:close))?"open":"closed";
+}
+function mapsUrl(a){return"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(a);}
+function dirUrl(a,m){return"https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(a)+"&travelmode="+m;}
+
+const S={
+  inp:{width:"100%",border:"1.5px solid #FFB7D1",borderRadius:12,padding:"9px 12px",fontSize:14,outline:"none",color:"#7A1230",background:"#FFF8FB",boxSizing:"border-box"},
+  lbl:{display:"block",fontSize:12,fontWeight:700,color:"#C94577",marginBottom:4},
+  card:{background:"white",borderRadius:18,border:"1.5px solid #FFB7D1",padding:"14px 16px",marginBottom:10,boxShadow:"0 2px 16px rgba(255,79,130,0.08)"},
+};
+
+// ══ 班機提醒 Modal ══
+function FlightReminderModal({onClose}){
+  return(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()} style={{maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{textAlign:"center",marginBottom:14}}>
+          <div style={{fontSize:52,lineHeight:1}}>✈️</div>
+          <div style={{fontSize:19,fontWeight:900,color:HK.primary,marginTop:8}}>🎀 班機出發提醒 🎀</div>
+          <div style={{fontSize:13,color:HK.textMid,marginTop:4}}>
+            {FLIGHT_NO} — 台灣時間 {FLIGHT_DEPART_TPE} 起飛<br/>
+            <span style={{fontWeight:700,color:"#ef4444"}}>距出發 4 小時內，請確認行李！</span>
+          </div>
+        </div>
+        <div style={{background:HK.ultraLight,borderRadius:16,padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:800,color:HK.primary,marginBottom:10}}>⚠️ 出境海關注意事項</div>
+          {[
+            ["🚫 電子煙 Vaping","絕對不可帶回台灣！入境台灣查獲沒收並開罰，千萬別放進行李"],
+            ["🛕 佛像 / 文物","需取得泰國文化部出口許可，否則海關沒收"],
+            ["💵 現金申報","攜帶超過 45 萬泰銖（≈台幣40萬）需向泰國海關申報"],
+            ["🌿 動植物製品","珊瑚、象牙、鱷魚皮等嚴格禁止攜出"],
+            ["🧾 VAT 退稅","購物5,000泰銖↑可退稅，記得帶收據去機場辦理（最高7%）"],
+            ["🥩 農產品","台灣規定：生鮮肉類不得攜入，水果依規申報"],
+          ].map(([t,d])=>(
+            <div key={t} style={{background:"white",borderRadius:12,padding:"9px 12px",marginBottom:6,border:"1px solid #FFD6E7"}}>
+              <div style={{fontSize:12,fontWeight:700,color:HK.primary,marginBottom:2}}>{t}</div>
+              <div style={{fontSize:12,color:HK.text,lineHeight:1.6}}>{d}</div>
+            </div>
+          ))}
+        </div>
+        <button className="kitty-btn" onClick={onClose}>🎀 已確認，出發囉！</button>
+      </div>
+    </div>
+  );
+}
+
+// ══ 多裝置同步 Modal ══
+function SyncModal({items,memo,onImport,onClose}){
+  const[mode,setMode]=useState("export");
+  const[importTxt,setImportTxt]=useState("");
+  const[err,setErr]=useState("");
+  const[copied,setCopied]=useState(false);
+  const codeStr=makeShareCode({items,memo,ver:1});
+  const doCopy=()=>{
+    const copy=(t)=>{try{navigator.clipboard.writeText(t);}catch{const el=document.createElement("textarea");el.value=t;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);}};
+    copy(codeStr);setCopied(true);setTimeout(()=>setCopied(false),2200);
+  };
+  const doImport=()=>{
+    const data=parseShareCode(importTxt);
+    if(!data){setErr("分享碼格式不正確，請重新確認");return;}
+    onImport(data);onClose();
+  };
+  return(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+          <div style={{fontSize:17,fontWeight:800,color:HK.primary}}>🔄 多裝置同步 🎀</div>
+          <button onClick={onClose} style={{background:HK.ultraLight,border:"none",borderRadius:8,width:28,height:28,cursor:"pointer",fontSize:16,color:HK.primary}}>✕</button>
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          {[["export","📤 匯出"],["import","📥 匯入"]].map(([m,l])=>(
+            <button key={m} onClick={()=>{setMode(m);setErr("");}} style={{flex:1,padding:"9px",borderRadius:12,border:mode===m?"none":"1.5px solid #FFB7D1",fontSize:13,fontWeight:700,cursor:"pointer",background:mode===m?HK.grad:"white",color:mode===m?"white":HK.primary}}>{l}</button>
+          ))}
+        </div>
+        {mode==="export"?(
+          <div>
+            <div style={{fontSize:12,color:HK.textMid,marginBottom:8}}>複製下方分享碼，在另一台手機選「📥 匯入」貼上即可：</div>
+            <div style={{background:"#FFF0F5",border:"1.5px solid #FFB7D1",borderRadius:12,padding:"10px 12px",fontSize:11,color:HK.text,wordBreak:"break-all",maxHeight:72,overflowY:"auto",marginBottom:10,fontFamily:"monospace",lineHeight:1.5}}>{codeStr.substring(0,120)}…</div>
+            <button onClick={doCopy} style={{width:"100%",background:copied?"#22C55E":HK.grad,color:"white",border:"none",borderRadius:14,padding:"12px",fontSize:14,fontWeight:800,cursor:"pointer",transition:"background 0.3s"}}>
+              {copied?"✅ 已複製成功！":"📋 複製分享碼"}
+            </button>
+            <div style={{fontSize:11,color:HK.textLight,textAlign:"center",marginTop:8}}>可透過 LINE / WhatsApp 傳給同行的手機</div>
+          </div>
+        ):(
+          <div>
+            <div style={{fontSize:12,color:HK.textMid,marginBottom:8}}>貼上從其他手機複製的分享碼：</div>
+            <textarea style={{...S.inp,height:90,resize:"none",fontFamily:"monospace",fontSize:12}} value={importTxt} onChange={e=>{setImportTxt(e.target.value);setErr("");}} placeholder="在此貼上分享碼…"/>
+            {err&&<div style={{fontSize:12,color:"#ef4444",marginTop:4}}>⚠️ {err}</div>}
+            <button onClick={doImport} style={{width:"100%",background:HK.grad,color:"white",border:"none",borderRadius:14,padding:"12px",fontSize:14,fontWeight:800,cursor:"pointer",marginTop:10}}>
+              📥 匯入並覆蓋本機資料
+            </button>
+            <div style={{fontSize:11,color:HK.textLight,textAlign:"center",marginTop:8}}>⚠️ 匯入後將覆蓋本機現有行程</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══ 天氣元件 ══
+function WeatherWidget({currentDate}){
+  const[wdata,setWdata]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const[err,setErr]=useState(false);
+  const[updated,setUpdated]=useState(null);
+  const load=()=>{
+    setLoading(true);
+    window.fetch("https://api.open-meteo.com/v1/forecast?latitude=13.7563&longitude=100.5018&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m&timezone=Asia/Bangkok&forecast_days=2")
+      .then(r=>r.json()).then(d=>{setWdata(d);setUpdated(getBangkokTimeStr());setLoading(false);setErr(false);})
+      .catch(()=>{setErr(true);setLoading(false);});
+  };
+  useEffect(()=>{load();},[]);
+  useEffect(()=>{const id=setInterval(load,30*60*1000);return()=>clearInterval(id);},[]);
+  const slots=useMemo(()=>{
+    if(!wdata)return[];
+    const h=getBangkokNow().getHours();
+    const target=currentDate+"T"+String(h).padStart(2,"0")+":00";
+    let idx=wdata.hourly.time.findIndex(t=>t===target);
+    if(idx<0)idx=0;
+    return Array.from({length:6},(_,i)=>{
+      const j=idx+i;if(j>=wdata.hourly.time.length)return null;
+      const t=wdata.hourly.time[j],hr=parseInt(t.split("T")[1]),code=wdata.hourly.weathercode[j],w=wmo(code);
+      return{label:i===0?"現在":String(hr).padStart(2,"0")+":00",temp:Math.round(wdata.hourly.temperature_2m[j]),rain:wdata.hourly.precipitation_probability[j],wind:Math.round(wdata.hourly.windspeed_10m[j]),icon:w.icon,desc:w.desc,isNow:i===0};
+    }).filter(Boolean);
+  },[wdata,currentDate]);
+  const cur=slots[0];
+  return(
+    <div style={{background:"linear-gradient(135deg,#FFF0F5,#FFE4ED)",border:"1.5px solid #FFB7D1",borderRadius:20,padding:"14px 16px 12px",marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <span style={{fontSize:15,fontWeight:700,color:HK.primary}}>🌤️ 曼谷即時天氣</span>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {updated&&<span style={{fontSize:11,color:HK.light}}>更新 {updated}</span>}
+          <button onClick={load} style={{background:"#FFB7D1",border:"none",borderRadius:10,padding:"3px 10px",fontSize:12,color:HK.primary,cursor:"pointer",fontWeight:600}}>↻</button>
+        </div>
+      </div>
+      {loading&&<div style={{textAlign:"center",padding:"12px 0",color:HK.light,fontSize:14}}>⏳ 取得曼谷天氣中…</div>}
+      {err&&<div style={{textAlign:"center",padding:"8px",color:"#f87171",fontSize:13,background:"#fef2f2",borderRadius:12}}>⚠️ 天氣暫時無法取得，請確認網路後重試</div>}
+      {!loading&&!err&&cur&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,background:"white",borderRadius:16,padding:"10px 14px"}}>
+            <span style={{fontSize:38}}>{cur.icon}</span>
+            <div style={{flex:1}}><div style={{fontSize:28,fontWeight:800,color:HK.primary,lineHeight:1}}>{cur.temp}°C</div><div style={{fontSize:13,color:HK.textMid,marginTop:2}}>{cur.desc}</div></div>
+            <div style={{textAlign:"right",fontSize:12,color:HK.textMid,lineHeight:1.9}}>
+              <div>💧 降雨 {cur.rain}%</div><div>💨 {cur.wind} km/h</div>
+              {cur.rain>=60&&<div style={{color:"#f97316",fontWeight:700}}>☂️ 建議帶傘</div>}
+              {cur.temp>=35&&<div style={{color:"#ef4444",fontWeight:700}}>🔥 高溫防曬</div>}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
+            {slots.map((h,i)=>(
+              <div key={i} style={{flex:"0 0 auto",minWidth:64,textAlign:"center",background:h.isNow?HK.grad:"white",borderRadius:14,padding:"8px 6px",border:h.isNow?"none":"1.5px solid #FFB7D1"}}>
+                <div style={{fontSize:11,fontWeight:700,color:h.isNow?"white":HK.light,marginBottom:3}}>{h.label}</div>
+                <div style={{fontSize:22,marginBottom:2}}>{h.icon}</div>
+                <div style={{fontSize:14,fontWeight:800,color:h.isNow?"white":HK.primary}}>{h.temp}°</div>
+                <div style={{fontSize:10,color:h.isNow?"#FFE8F0":HK.light,marginTop:2}}>💧{h.rain}%</div>
+                {h.rain>=60&&<div style={{fontSize:10,marginTop:1}}>☂️</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══ 地圖元件 ══
+function MapSection(){
+  const[showMap,setShowMap]=useState(false);
+  return(
+    <div style={{background:"linear-gradient(135deg,#FFF0F5,#FFF8FB)",border:"1.5px solid #FFB7D1",borderRadius:20,overflow:"hidden",marginBottom:10}}>
+      <div style={{padding:"12px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <span style={{fontSize:15,fontWeight:700,color:HK.primary}}>🗺️ 我的 Google Maps 清單</span>
+          <button onClick={()=>setShowMap(s=>!s)} style={{background:"#FFB7D1",border:"none",borderRadius:10,padding:"4px 12px",fontSize:12,color:HK.primary,cursor:"pointer",fontWeight:600}}>{showMap?"收起 ▲":"地圖 ▼"}</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:6}}>
+          {MY_MAPS_LISTS.map(l=>(
+            <a key={l.name} href={l.url} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 6px",background:"white",border:"2px solid #FFB7D1",borderRadius:16}}>
+              <span style={{fontSize:24}}>{l.icon}</span>
+              <span style={{fontSize:13,fontWeight:700,color:l.color}}>{l.name}</span>
+              <span style={{fontSize:10,color:HK.light}}>{l.desc}</span>
+              <span style={{fontSize:10,background:l.bg,color:l.color,borderRadius:8,padding:"2px 6px",fontWeight:600}}>開啟 ↗</span>
+            </a>
+          ))}
+        </div>
+      </div>
+      {showMap&&(
+        <div style={{position:"relative"}}>
+          <iframe title="Bangkok Map" src="https://maps.google.com/maps?q=Bangkok+Thailand&t=m&z=13&ie=UTF8&iwloc=&output=embed" width="100%" height="260" style={{border:"none",display:"block"}} allowFullScreen loading="lazy"/>
+          <a href="https://maps.google.com/maps?q=Bangkok+Thailand" target="_blank" rel="noopener noreferrer" style={{position:"absolute",bottom:10,right:10,background:HK.primary,color:"white",borderRadius:20,padding:"6px 14px",fontSize:12,fontWeight:700,textDecoration:"none"}}>Google Maps ↗</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══ 備忘錄 ══
+function MemoWidget(){
+  const[open,setOpen]=useState(false);
+  const[text,setText]=useState(()=>LS.get("bkk_memo",""));
+  useEffect(()=>{LS.set("bkk_memo",text);},[text]);
+  return(
+    <div style={{background:"white",border:"1.5px solid #FFB7D1",borderRadius:18,marginBottom:10,overflow:"hidden",boxShadow:HK.shadow}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{width:"100%",background:"none",border:"none",cursor:"pointer",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:14,fontWeight:700,color:HK.primary}}>📝 備忘錄 Memo</span>
+        <span style={{fontSize:13,color:HK.light}}>{open?"▲":"▼"}</span>
+      </button>
+      {open&&(
+        <div style={{padding:"0 14px 14px",animation:"slideDown 0.18s ease"}}>
+          <textarea
+            style={{...S.inp,height:120,resize:"vertical",fontSize:13,lineHeight:1.7}}
+            value={text}
+            onChange={e=>setText(e.target.value)}
+            placeholder={"購物清單、待辦事項、重要提醒…\n例：換泰銖、買防曬、充行動電源"}
+          />
+          {text&&<div style={{fontSize:11,color:HK.light,marginTop:4,textAlign:"right"}}>✅ 自動儲存</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══ 節慶橫幅 ══
+function HolidayBanner({todayFestivals}){
+  const[dismissed,setDismissed]=useState({});
+  const visible=todayFestivals.filter(f=>!dismissed[f.date+f.name]);
+  if(!visible.length)return null;
+  const grad={buddhist:"linear-gradient(135deg,#f59e0b,#fbbf24)",songkran:"linear-gradient(135deg,#06b6d4,#3b82f6)",memorial:"linear-gradient(135deg,#374151,#6b7280)",festival:"linear-gradient(135deg,#8b5cf6,#ec4899)",holiday:"linear-gradient(135deg,#FF4F82,#FF8FAB)"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+      {visible.map(f=>(
+        <div key={f.date+f.name} style={{background:grad[f.type]||grad.holiday,borderRadius:18,padding:14,color:"white"}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                <span style={{fontSize:18}}>{f.icon}</span>
+                <span style={{fontWeight:800,fontSize:14}}>{f.name}</span>
+                {f.alcoholRestriction&&<span style={{background:"rgba(255,255,255,0.25)",borderRadius:20,padding:"2px 8px",fontSize:11,fontWeight:700}}>🚫 禁酒</span>}
+              </div>
+              {f.warnings.map((w,i)=><div key={i} style={{fontSize:12,color:"rgba(255,255,255,0.9)",marginBottom:2}}>▸ {w}</div>)}
+            </div>
+            <button onClick={()=>setDismissed(d=>({...d,[f.date+f.name]:true}))} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",borderRadius:8,width:24,height:24,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ══ 行程卡片 ══
+function OpenBadge({status,openDays}){
+  const cfg={open:{bg:"#f0fdf4",c:"#16a34a",dot:"#22c55e",t:"營業中"},closed:{bg:"#fef2f2",c:"#dc2626",dot:"#ef4444",t:"已打烊"},closed_today:{bg:"#fefce8",c:"#ca8a04",dot:"#eab308",t:"今日休息"+(openDays?" ("+openDays+")":"")},unknown:{bg:"#f9fafb",c:"#9ca3af",dot:"#d1d5db",t:"時間未知"}};
+  const s=cfg[status]||cfg.unknown;
+  return(<span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:20,background:s.bg,color:s.c,fontSize:11,fontWeight:700}}><span style={{width:6,height:6,borderRadius:"50%",background:s.dot,display:"inline-block"}}/>{s.t}</span>);
+}
+
+function ItemCard({item,onEdit,onDelete,todayFestivals}){
+  const[open,setOpen]=useState(false);
+  const[showInfo,setShowInfo]=useState(false);
+  const openStatus=getOpenStatus(item);
+  const cat=CATEGORIES[item.category]||CATEGORIES.attraction;
+  const isBuddhistDay=todayFestivals.some(f=>f.type==="buddhist");
+  const showAlcohol=isBuddhistDay&&item.category==="food";
+  const attrInfo=item.category==="attraction"?getAttractionInfo(item.name):null;
+  return(
+    <div style={{background:"white",borderRadius:18,border:"1.5px solid #FFB7D1",overflow:"hidden",marginBottom:8,boxShadow:HK.shadow}}>
+      <div onClick={()=>setOpen(o=>!o)} style={{padding:"12px 14px",cursor:"pointer"}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+          <span style={{fontSize:24,flexShrink:0,marginTop:1}}>{cat.icon}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:4,alignItems:"center"}}>
+              <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:cat.color+"18",color:cat.color}}>{cat.label}</span>
+              {(item.openTime||item.closeTime)&&<OpenBadge status={openStatus} openDays={item.openDays}/>}
+              {item.date&&<span style={{fontSize:11,color:HK.light}}>📅 {item.date}{item.time?" "+item.time:""}</span>}
+            </div>
+            <div style={{fontWeight:700,fontSize:15,color:HK.text,marginBottom:2}}>{item.name}</div>
+            {item.address&&<div style={{fontSize:12,color:HK.textMid,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍 {item.address}</div>}
+            {(item.openTime||item.closeTime)&&<div style={{fontSize:11,color:HK.light,marginTop:2}}>🕐 {item.openTime||"?"} – {item.closeTime==="00:00"?"00:00（午夜）":item.closeTime||"?"}{item.openDays&&<span style={{marginLeft:6,color:HK.primary}}> {item.openDays}</span>}</div>}
+          </div>
+          <span style={{color:HK.light,fontSize:12,flexShrink:0,marginTop:4}}>{open?"▲":"▼"}</span>
+        </div>
+      </div>
+      {open&&(
+        <div style={{padding:"0 14px 14px",borderTop:"1px solid #FFE8F0"}}>
+          {attrInfo&&(
+            <div style={{marginTop:10}}>
+              <button onClick={()=>setShowInfo(s=>!s)} style={{width:"100%",background:"linear-gradient(135deg,#FFF0F5,#FFE8F0)",border:"1.5px solid #FFD6E7",borderRadius:14,padding:"10px 14px",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:13,fontWeight:700,color:HK.primary}}>{attrInfo.emoji} 景點介紹 & 冷知識</span>
+                <span style={{fontSize:12,color:HK.light}}>{showInfo?"▲":"▼"}</span>
+              </button>
+              {showInfo&&(
+                <div style={{background:"#FFF0F5",borderRadius:"0 0 14px 14px",padding:"12px 14px"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:HK.primary,marginBottom:6}}>📖 歷史背景</div>
+                  <div style={{fontSize:13,color:HK.text,lineHeight:1.7,marginBottom:10}}>{attrInfo.history}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:HK.primary,marginBottom:6}}>💡 冷知識</div>
+                  {attrInfo.funFacts.map((f,i)=>(
+                    <div key={i} style={{display:"flex",gap:8,marginBottom:5}}>
+                      <span style={{color:HK.light,flexShrink:0}}>▸</span>
+                      <span style={{fontSize:13,color:HK.text,lineHeight:1.6}}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {item.notes&&<div style={{background:"#fffbeb",borderRadius:12,padding:"10px 12px",marginTop:10}}><div style={{fontSize:11,color:"#d97706",fontWeight:700,marginBottom:4}}>📝 備注</div><div style={{fontSize:13,color:"#78350f",lineHeight:1.6}}>{item.notes}</div></div>}
+          {item.recommendedVisitTime&&<div style={{background:"#f0fdf4",borderRadius:12,padding:"10px 12px",marginTop:8}}><div style={{fontSize:11,color:"#16a34a",fontWeight:700,marginBottom:4}}>⭐ 推薦遊玩時間</div><div style={{fontSize:13,color:"#14532d",lineHeight:1.6}}>{item.recommendedVisitTime}</div></div>}
+          {item.isDressCodeRequired&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:"10px 12px",marginTop:8}}><div style={{fontSize:11,color:"#d97706",fontWeight:700,marginBottom:4}}>👗 著裝提醒</div><div style={{fontSize:13,color:"#78350f"}}>{TEMPLE_TIP}</div></div>}
+          {showAlcohol&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:12,padding:"10px 12px",marginTop:8}}><div style={{fontSize:11,color:"#dc2626",fontWeight:700,marginBottom:4}}>🚫 佛教聖日警示</div><div style={{fontSize:13,color:"#7f1d1d"}}>今日佛教聖日，全泰國不可販售/供應酒精飲料</div></div>}
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+            {item.address&&(
+              <span style={{display:"contents"}}>
+                <a href={mapsUrl(item.address)} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,padding:"7px 12px",background:HK.primary,color:"white",borderRadius:10,fontSize:12,fontWeight:700}}>🗺️ 查看地圖</a>
+                <a href={dirUrl(item.address,item.transportMode||"transit")} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4,padding:"7px 12px",background:"#22c55e",color:"white",borderRadius:10,fontSize:12,fontWeight:700}}>🧭 最快路線</a>
+              </span>
+            )}
+            <button onClick={e=>{e.stopPropagation();onEdit(item);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"7px 12px",background:HK.ultraLight,color:HK.primary,border:"1.5px solid #FFB7D1",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ 編輯</button>
+            <button onClick={e=>{e.stopPropagation();onDelete(item.id);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"7px 12px",background:"#fef2f2",color:"#dc2626",border:"1.5px solid #fecaca",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer"}}>🗑️ 刪除</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══ 表單 ══
+function ItemForm({initial,onSave,onCancel}){
+  const[form,setForm]=useState(initial||{name:"",category:"attraction",address:"",date:"",time:"",notes:"",transportMode:"transit",openTime:"",closeTime:"",openDays:"",closedWeekdays:false,isDressCodeRequired:false,recommendedVisitTime:""});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  return(
+    <form onSubmit={e=>{e.preventDefault();if(form.name.trim())onSave(form);}} style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div><label style={S.lbl}>名稱 *</label><input style={S.inp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="例：玉佛寺、船麵巷" required/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div><label style={S.lbl}>類別</label><select style={S.inp} value={form.category} onChange={e=>set("category",e.target.value)}>{Object.entries(CATEGORIES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></div>
+        <div><label style={S.lbl}>導航方式</label><select style={S.inp} value={form.transportMode} onChange={e=>set("transportMode",e.target.value)}>{Object.entries(TRANSPORT_MODES).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+      </div>
+      <div><label style={S.lbl}>地址 / 地點</label><input style={S.inp} value={form.address} onChange={e=>set("address",e.target.value)} placeholder="例：Siam Paragon, Bangkok"/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div><label style={S.lbl}>行程日期</label><input type="date" style={S.inp} value={form.date} onChange={e=>set("date",e.target.value)}/></div>
+        <div><label style={S.lbl}>出發時間</label><input type="time" style={S.inp} value={form.time} onChange={e=>set("time",e.target.value)}/></div>
+      </div>
+      <div style={{background:HK.ultraLight,border:"1.5px solid #FFB7D1",borderRadius:14,padding:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:HK.primary,marginBottom:8}}>🕐 營業時間</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+          <div><label style={{...S.lbl,color:HK.textMid}}>開始</label><input type="time" style={S.inp} value={form.openTime} onChange={e=>set("openTime",e.target.value)}/></div>
+          <div><label style={{...S.lbl,color:HK.textMid}}>結束</label><input type="time" style={S.inp} value={form.closeTime} onChange={e=>set("closeTime",e.target.value)}/></div>
+        </div>
+        <div style={{marginBottom:8}}><label style={{...S.lbl,color:HK.textMid}}>開放日（留白代表每日）</label><input style={S.inp} value={form.openDays} onChange={e=>set("openDays",e.target.value)} placeholder="例：僅週六、週日"/></div>
+        <div style={{display:"flex",gap:16}}>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:HK.primary,cursor:"pointer"}}><input type="checkbox" checked={!!form.closedWeekdays} onChange={e=>set("closedWeekdays",e.target.checked)}/>僅週末</label>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:HK.primary,cursor:"pointer"}}><input type="checkbox" checked={!!form.isDressCodeRequired} onChange={e=>set("isDressCodeRequired",e.target.checked)}/>需覆蓋肩/膝</label>
+        </div>
+      </div>
+      <div><label style={S.lbl}>⭐ 推薦遊玩時間</label><textarea style={{...S.inp,resize:"none",height:56}} value={form.recommendedVisitTime} onChange={e=>set("recommendedVisitTime",e.target.value)} placeholder="例：早上09:00人最少"></textarea></div>
+      <div><label style={S.lbl}>📝 備注</label><textarea style={{...S.inp,resize:"none",height:72}} value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="票價、注意事項…"></textarea></div>
+      <div style={{display:"flex",gap:8}}>
+        <button type="submit" style={{flex:1,background:HK.grad,color:"white",border:"none",borderRadius:14,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>✅ 儲存</button>
+        <button type="button" onClick={onCancel} style={{flex:1,background:HK.ultraLight,color:HK.primary,border:"1.5px solid #FFB7D1",borderRadius:14,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>取消</button>
+      </div>
+    </form>
+  );
+}
+
+// ══ Tab: 航班住宿 ══
+function FlightHotelTab(){
+  return(
+    <div style={{paddingBottom:30}}>
+      <div style={{background:HK.ultraLight,borderRadius:14,padding:"10px 14px",marginBottom:12,border:"1px solid #FFD6E7"}}>
+        <div style={{fontSize:12,color:HK.textMid}}>✈️ 班機出發 4 小時前，App 會自動彈出「出境提醒」彈窗</div>
+      </div>
+      <div style={{...S.card,borderLeft:"4px solid "+HK.primary}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{fontSize:28}}>✈️</span>
+          <div><div style={{fontSize:16,fontWeight:800,color:HK.primary}}>去程航班</div><div style={{fontSize:12,color:HK.light}}>2026 年 5 月 1 日（五）</div></div>
+          <span style={{marginLeft:"auto",background:HK.ultraLight,color:HK.primary,borderRadius:10,padding:"3px 10px",fontSize:12,fontWeight:700}}>去程</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {[["✈️ 航班","泰國獅航 SL399"],["💺 艙等","經濟艙"],["🛩️ 機型","波音 737-900"],["🍱 餐點","無提供"]].map(([k,v])=>(
+            <div key={k} style={{background:HK.ultraLight,borderRadius:12,padding:"8px 10px"}}><div style={{fontSize:10,color:HK.light,fontWeight:700,marginBottom:2}}>{k}</div><div style={{fontSize:13,color:HK.text,fontWeight:600}}>{v}</div></div>
+          ))}
+        </div>
+        <div style={{marginTop:10,background:"#fff7ed",borderRadius:12,padding:"8px 12px",fontSize:12,color:"#c2410c"}}>💡 無提供餐點，建議出發前在機場用餐或自備零食</div>
+      </div>
+      <div style={{...S.card,borderLeft:"4px solid #a855f7"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{fontSize:28}}>🛬</span>
+          <div><div style={{fontSize:16,fontWeight:800,color:"#7c3aed"}}>回程航班</div><div style={{fontSize:12,color:"#c4b5fd"}}>2026 年 5 月 7 日</div></div>
+          <span style={{marginLeft:"auto",background:"#f5f3ff",color:"#7c3aed",borderRadius:10,padding:"3px 10px",fontSize:12,fontWeight:700}}>回程</span>
+        </div>
+        <div style={{background:"#f5f3ff",borderRadius:12,padding:"10px 12px",fontSize:13,color:"#5b21b6"}}>📅 回程日期：2026 年 5 月 7 日（航班細節待確認）</div>
+        <div style={{marginTop:8,background:HK.ultraLight,borderRadius:12,padding:"8px 12px",fontSize:12,color:HK.primary}}>💡 回程當日確認退房時間，行李可寄放飯店</div>
+      </div>
+      <div style={{...S.card,borderLeft:"4px solid #22c55e"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <span style={{fontSize:28}}>🏨</span>
+          <div style={{flex:1}}><div style={{fontSize:16,fontWeight:800,color:"#15803d"}}>素坤逸15巷飯店</div><div style={{fontSize:11,color:"#86efac"}}>Sukhumvit Soi 15 Hotel</div></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          {[["📅 入住","2026/05/01（五）"],["📅 退房","2026/05/06（三）"],["🌙 住宿","5 晚"],["🚇 交通","BTS Asok 站附近"]].map(([k,v])=>(
+            <div key={k} style={{background:"#f0fdf4",borderRadius:12,padding:"8px 10px"}}><div style={{fontSize:10,color:"#86efac",fontWeight:700,marginBottom:2}}>{k}</div><div style={{fontSize:13,color:"#14532d",fontWeight:600}}>{v}</div></div>
+          ))}
+        </div>
+        <div style={{background:"#f0fdf4",borderRadius:12,padding:"10px 12px",marginBottom:8}}>
+          <div style={{fontSize:11,color:"#16a34a",fontWeight:700,marginBottom:4}}>📍 飯店地址</div>
+          <div style={{fontSize:12,color:"#14532d"}}>81 Soi Sukhumvit 15, Klong Toey Nua, Wattana, Bangkok 10110</div>
+          <div style={{fontSize:11,color:"#86efac",marginTop:2}}>81 ซ. สุขุมวิท 15 แขวงคลองเตยเหนือ เขตวัฒนา กรุงเทพฯ 10110</div>
+        </div>
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:"10px 12px",marginBottom:10}}>
+          <div style={{fontSize:11,color:"#d97706",fontWeight:700,marginBottom:4}}>🍳 早餐資訊（已含於訂單）</div>
+          <div style={{fontSize:13,color:"#78350f",fontWeight:600}}>歐式早餐</div>
+          <div style={{fontSize:12,color:"#92400e",marginTop:4}}>⏰ 週一–週日　06:30 – 10:30</div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <a href={mapsUrl("81 Sukhumvit Soi 15, Wattana, Bangkok")} target="_blank" rel="noopener noreferrer" style={{flex:1,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"9px",background:HK.primary,color:"white",borderRadius:12,fontSize:12,fontWeight:700}}>🗺️ 查看地圖</a>
+          <a href={dirUrl("81 Sukhumvit Soi 15 Bangkok","transit")} target="_blank" rel="noopener noreferrer" style={{flex:1,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"9px",background:"#22c55e",color:"white",borderRadius:12,fontSize:12,fontWeight:700}}>🚇 導航到飯店</a>
+        </div>
+      </div>
+      <div style={{...S.card,background:"linear-gradient(135deg,#FFF0F5,#f5f3ff)"}}>
+        <div style={{fontSize:14,fontWeight:700,color:HK.primary,marginBottom:10}}>✈️ 機場 → 飯店交通</div>
+        {[["Airport Rail Link（推薦）","素萬那普機場搭 ARL → Phaya Thai站 → 換 BTS Sukhumvit Line → Asok站，約45分鐘","#ec4899"],["計程車","入境大廳搭公定價計程車，約350–500泰銖（視路況），需付高速費","#22c55e"]].map(([k,v,c])=>(
+          <div key={k} style={{display:"flex",gap:10,marginBottom:8,paddingBottom:8,borderBottom:"1px solid #FFE8F0"}}>
+            <div style={{width:4,borderRadius:4,background:c,flexShrink:0}}/>
+            <div><div style={{fontSize:12,fontWeight:700,color:c,marginBottom:2}}>{k}</div><div style={{fontSize:12,color:HK.text,lineHeight:1.6}}>{v}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══ Tab: 緊急資訊 ══
+function EmergencyTab(){
+  const nums=[{emoji:"🚔",name:"警察局",number:"191",desc:"泰國報案專線（24小時）",color:"#dc2626",bg:"#fef2f2"},{emoji:"🚑",name:"急救救護車",number:"1669",desc:"醫療緊急求助（24小時）",color:"#dc2626",bg:"#fef2f2"},{emoji:"🚒",name:"消防",number:"199",desc:"火災報案",color:"#ea580c",bg:"#fff7ed"},{emoji:"👮",name:"觀光警察",number:"1155",desc:"英語服務・遊客糾紛・最推薦撥打",color:"#1d4ed8",bg:"#eff6ff"},{emoji:"🆘",name:"緊急總線",number:"112",desc:"相當於台灣110/119",color:"#7c3aed",bg:"#f5f3ff"}];
+  return(
+    <div style={{paddingBottom:30}}>
+      <div style={S.card}>
+        <div style={{fontSize:15,fontWeight:800,color:"#dc2626",marginBottom:12}}>🚨 泰國緊急電話</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {nums.map(n=>(
+            <div key={n.number} style={{background:n.bg,borderRadius:14,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:28,flexShrink:0}}>{n.emoji}</span>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:n.color}}>{n.name}</div><div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{n.desc}</div></div>
+              <a href={"tel:"+n.number} style={{textDecoration:"none",background:n.color,color:"white",borderRadius:20,padding:"6px 16px",fontSize:16,fontWeight:900,letterSpacing:1}}>{n.number}</a>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={S.card}>
+        <div style={{fontSize:15,fontWeight:800,color:"#0369a1",marginBottom:12}}>🇹🇼 台北經濟文化辦事處（曼谷）</div>
+        <div style={{background:"#eff6ff",borderRadius:14,padding:"12px 14px"}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#1d4ed8",marginBottom:6}}>急難救助 24 小時</div>
+          <div style={{fontSize:12,color:"#1e40af",lineHeight:2.2}}>
+            <div>📞 <a href="tel:+6626700200" style={{color:"#1d4ed8",fontWeight:700}}>+66-2-670-0200</a></div>
+            <div>📍 40F, Empire Tower, 195 South Sathorn Rd, Bangkok</div>
+            <div>🕐 辦公時間：週一–五 09:00–12:00, 13:30–17:30</div>
+          </div>
+          <div style={{marginTop:8,background:"#dbeafe",borderRadius:10,padding:"7px 10px",fontSize:12,color:"#1e3a8a",fontWeight:600}}>💡 護照遺失、急難救助請直撥，24小時有人接聽</div>
+        </div>
+      </div>
+      <div style={S.card}>
+        <div style={{fontSize:15,fontWeight:800,color:"#059669",marginBottom:12}}>🏥 鄰近國際醫院</div>
+        {[{name:"Bumrungrad International Hospital",addr:"33 Sukhumvit Soi 3, Bangkok",phone:"+66-2-667-1000",note:"距飯店最近，有中英文服務"},{name:"Bangkok Hospital",addr:"2 Soi Soonvijai 7, New Petchaburi Rd",phone:"+66-2-310-3000",note:"大型國際醫院，協助保險理賠"}].map(h=>(
+          <div key={h.name} style={{background:"#f0fdf4",borderRadius:14,padding:"12px 14px",marginBottom:8}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#15803d",marginBottom:4}}>{h.name}</div>
+            <div style={{fontSize:12,color:"#166534",lineHeight:1.9}}>
+              <div>📞 <a href={"tel:"+h.phone} style={{color:"#15803d",fontWeight:700}}>{h.phone}</a></div>
+              <div>📍 {h.addr}</div>
+            </div>
+            <div style={{marginTop:6,fontSize:12,color:"#16a34a"}}>💡 {h.note}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══ Tab: 注意事項 ══
+function TravelTipsTab(){
+  const cats=[
+    {title:"🚫 絕對禁止（嚴重刑責）",items:[["毒品","死刑或無期徒刑，即使少量攜帶也會被捕，絕對勿碰"],["⚡ 電子煙 / Vaping","持有或使用可處10年有期徒刑＋高額罰款！台灣人最常忽略"],["武器彈藥","包含仿製品，入境查獲即逮捕"],["色情刊物","包含紙本及電子檔，違法攜帶入境"]],color:"#dc2626",bg:"#fef2f2",border:"#fecaca"},
+    {title:"⚠️ 出境海關注意",items:[["佛像","需取得文物出口許可，違規沒收並罰款"],["現金限額","攜帶超過 45 萬泰銖（約台幣40萬）需申報"],["動植物","活體及其製品嚴格限制，珊瑚、象牙均禁止"],["購物退稅","保留購物收據，離境前在機場辦理 VAT 退稅"]],color:"#d97706",bg:"#fffbeb",border:"#fde68a"},
+    {title:"🇹🇭 文化禁忌",items:[["冒犯王室","泰國冒犯君主法，批評王室可判3–15年"],["踩踏紙幣","泰銖上有國王頭像，踩踏視為不敬"],["摸他人頭部","頭部被視為神聖，勿隨意觸摸（含兒童）"],["腳指向人/佛像","腳是不潔的部位，坐姿切勿腳朝向他人或佛像"],["女性觸碰僧侶","女性不可接觸僧侶，傳遞物品需透過中間物"]],color:"#7c3aed",bg:"#f5f3ff",border:"#ddd6fe"},
+  ];
+  return(
+    <div style={{paddingBottom:30}}>
+      {cats.map(c=>(
+        <div key={c.title} style={{...S.card,borderLeft:"4px solid "+c.color}}>
+          <div style={{fontSize:14,fontWeight:800,color:c.color,marginBottom:10}}>{c.title}</div>
+          {c.items.map(([t,d])=>(
+            <div key={t} style={{background:c.bg,border:"1px solid "+c.border,borderRadius:12,padding:"9px 12px",marginBottom:6}}>
+              <div style={{fontSize:13,fontWeight:700,color:c.color,marginBottom:2}}>{t}</div>
+              <div style={{fontSize:12,color:"#374151",lineHeight:1.6}}>{d}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+      <div style={{background:"linear-gradient(135deg,#FFF0F5,#f5f3ff)",borderRadius:18,padding:"14px 16px",border:"1.5px solid #FFB7D1"}}>
+        <div style={{fontSize:13,fontWeight:700,color:HK.primary,marginBottom:8}}>🛂 入出境小抄</div>
+        {[["入境 🛬","護照有效期需6個月以上・台灣護照免簽30天・申報現金超過45萬泰銖"],["出境 🛫","保留收據辦VAT退稅・佛像出口需許可・電子煙不得帶回台灣・農產品依台灣海關規定"]].map(([k,v])=>(
+          <div key={k} style={{background:"white",borderRadius:12,padding:"10px 12px",marginBottom:8}}>
+            <div style={{fontSize:12,fontWeight:700,color:HK.primary,marginBottom:4}}>{k}</div>
+            <div style={{fontSize:12,color:HK.text,lineHeight:1.7}}>{v}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══ 主元件 ══
+function BangkokPlanner(){
+  const[items,setItems]=useState(()=>LS.get("bkk_items",INITIAL_ITEMS));
+  const[tab,setTab]=useState("itinerary");
+  const[filter,setFilter]=useState("all");
+  const[search,setSearch]=useState("");
+  const[showForm,setShowForm]=useState(false);
+  const[editingItem,setEditingItem]=useState(null);
+  const[sortBy,setSortBy]=useState("date");
+  const[currentTime,setCurrentTime]=useState(getBangkokTimeStr);
+  const[currentDate,setCurrentDate]=useState(getBangkokDateStr);
+  const[showFlightReminder,setShowFlightReminder]=useState(()=>shouldShowFlightReminder());
+  const[showSync,setShowSync]=useState(false);
+  const[dismissedReminder,setDismissedReminder]=useState(false);
+
+  // ── 自動儲存到 localStorage ──
+  useEffect(()=>{LS.set("bkk_items",items);LS.set("bkk_nextId",nextId);},[items]);
+  useEffect(()=>{const id=setInterval(()=>{setCurrentTime(getBangkokTimeStr());setCurrentDate(getBangkokDateStr());},30000);return()=>clearInterval(id);},[]);
+
+  const todayFestivals=useMemo(()=>THAI_FESTIVALS.filter(f=>f.date===currentDate),[currentDate]);
+  const hasAlcohol=todayFestivals.some(f=>f.alcoholRestriction);
+
+  const handleSave=(form)=>{
+    if(editingItem){setItems(prev=>prev.map(it=>it.id===editingItem.id?{...form,id:it.id}:it));setEditingItem(null);}
+    else{setItems(prev=>[...prev,{...form,id:nextId++}]);setShowForm(false);}
+  };
+  const filtered=useMemo(()=>{
+    let r=items;
+    if(filter!=="all")r=r.filter(it=>it.category===filter);
+    if(search.trim()){const q=search.toLowerCase();r=r.filter(it=>it.name.toLowerCase().includes(q)||(it.address||"").toLowerCase().includes(q)||(it.notes||"").toLowerCase().includes(q));}
+    if(sortBy==="date")r=[...r].sort((a,b)=>((a.date||"9999")+(a.time||"")).localeCompare((b.date||"9999")+(b.time||"")));
+    else if(sortBy==="category")r=[...r].sort((a,b)=>a.category.localeCompare(b.category));
+    else if(sortBy==="name")r=[...r].sort((a,b)=>a.name.localeCompare(b.name,"zh-TW"));
+    return r;
+  },[items,filter,search,sortBy]);
+  const grouped=useMemo(()=>{
+    const g={};filtered.forEach(it=>{const k=it.date||"未指定日期";if(!g[k])g[k]=[];g[k].push(it);});
+    return Object.entries(g).sort(([a],[b])=>a.localeCompare(b));
+  },[filtered]);
+  const counts=useMemo(()=>{const c={all:items.length};Object.keys(CATEGORIES).forEach(k=>{c[k]=items.filter(it=>it.category===k).length;});return c;},[items]);
+
+  const handleImport=(data)=>{
+    setItems(data.items);
+    nextId=Math.max(...data.items.map(it=>it.id),0)+1;
+    LS.set("bkk_items",data.items);
+    LS.set("bkk_nextId",nextId);
+    if(data.memo!==undefined)LS.set("bkk_memo",data.memo);
+  };
+
+  const TABS=[{id:"itinerary",icon:"🗺️",label:"行程"},{id:"flight",icon:"✈️",label:"航班住宿"},{id:"emergency",icon:"🚨",label:"緊急資訊"},{id:"tips",icon:"⚠️",label:"注意事項"}];
+
+  return(
+    <div style={{minHeight:"100vh",background:"transparent",paddingBottom:80}}>
+      {/* 班機提醒 Modal */}
+      {showFlightReminder&&!dismissedReminder&&(
+        <FlightReminderModal onClose={()=>{setShowFlightReminder(false);setDismissedReminder(true);}}/>
+      )}
+      {/* 同步 Modal */}
+      {showSync&&(
+        <SyncModal items={items} memo={LS.get("bkk_memo","")} onImport={handleImport} onClose={()=>setShowSync(false)}/>
+      )}
+
+      {/* Header */}
+      <div style={{position:"sticky",top:0,zIndex:50,background:HK.grad,padding:"14px 16px 10px",boxShadow:"0 4px 24px rgba(255,79,130,0.3)"}}>
+        <div style={{maxWidth:480,margin:"0 auto"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+            <div>
+              <div style={{fontSize:20,fontWeight:900,color:"white",letterSpacing:0.5}}>🎀 曼谷旅遊規劃 🎀</div>
+              <div style={{fontSize:11,color:"#FFE8F0",marginTop:1}}>曼谷時間 {currentTime}・{currentDate}{hasAlcohol&&<span style={{marginLeft:8,background:"rgba(255,255,255,0.22)",borderRadius:20,padding:"1px 8px",fontWeight:700}}>🚫 今日禁酒</span>}</div>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <button onClick={()=>setShowSync(true)} style={{background:"rgba(255,255,255,0.22)",border:"none",borderRadius:14,padding:"6px 10px",fontSize:12,fontWeight:700,color:"white",cursor:"pointer"}}>🔄 同步</button>
+              {tab==="itinerary"&&<button onClick={()=>{setShowForm(true);setEditingItem(null);}} style={{background:"white",border:"none",borderRadius:20,padding:"8px 16px",fontSize:13,fontWeight:900,color:HK.primary,cursor:"pointer"}}>＋ 新增</button>}
+            </div>
+          </div>
+          {tab==="itinerary"&&(
+            <div style={{marginTop:6}}>
+              <input style={{width:"100%",padding:"8px 14px",borderRadius:20,border:"none",fontSize:13,background:"rgba(255,255,255,0.22)",color:"white",outline:"none",boxSizing:"border-box",marginBottom:7}} placeholder="🔍 搜尋景點、美食、交通…" value={search} onChange={e=>setSearch(e.target.value)}/>
+              <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+                {[["all","全部",null],...Object.entries(CATEGORIES).map(([k,v])=>[k,v.label,v.icon])].map(([k,label,icon])=>(
+                  <button key={k} onClick={()=>setFilter(k)} style={{flexShrink:0,padding:"4px 12px",borderRadius:20,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",background:filter===k?"white":"rgba(255,255,255,0.22)",color:filter===k?HK.primary:"white"}}>
+                    {icon?icon+" ":""}{label} ({counts[k]||0})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{maxWidth:480,margin:"0 auto",padding:"14px 14px 0"}}>
+        {tab==="itinerary"&&(
+          <div>
+            <WeatherWidget currentDate={currentDate}/>
+            <MapSection/>
+            <MemoWidget/>
+            <HolidayBanner todayFestivals={todayFestivals}/>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+              <span style={{fontSize:12,color:HK.light}}>排序：</span>
+              {[["date","📅 日期"],["category","🏷️ 類別"],["name","🔤 名稱"]].map(([k,l])=>(
+                <button key={k} onClick={()=>setSortBy(k)} style={{padding:"4px 10px",borderRadius:10,border:sortBy===k?"none":"1.5px solid #FFB7D1",fontSize:11,fontWeight:700,cursor:"pointer",background:sortBy===k?HK.primary:"white",color:sortBy===k?"white":HK.textMid}}>{l}</button>
+              ))}
+              <span style={{marginLeft:"auto",fontSize:11,color:HK.light}}>{filtered.length} 項</span>
+            </div>
+            {showForm&&!editingItem&&(<div style={{background:"white",borderRadius:20,padding:16,boxShadow:"0 4px 24px rgba(255,79,130,0.15)",border:"1.5px solid #FFB7D1",marginBottom:12}}><div style={{fontSize:16,fontWeight:800,color:HK.primary,marginBottom:14}}>🎀 新增行程</div><ItemForm onSave={handleSave} onCancel={()=>setShowForm(false)}/></div>)}
+            {editingItem&&(<div style={{background:"white",borderRadius:20,padding:16,boxShadow:"0 4px 24px rgba(255,79,130,0.15)",border:"1.5px solid #FFB7D1",marginBottom:12}}><div style={{fontSize:16,fontWeight:800,color:HK.primary,marginBottom:14}}>✏️ 編輯行程</div><ItemForm initial={editingItem} onSave={handleSave} onCancel={()=>setEditingItem(null)}/></div>)}
+            {grouped.length===0?(
+              <div style={{textAlign:"center",padding:"40px 20px",color:HK.light}}><div style={{fontSize:48,marginBottom:12}}>🎀</div><div>尚無行程，點右上角「新增」開始規劃吧！</div></div>
+            ):grouped.map(([date,dayItems])=>{
+              const dayFests=THAI_FESTIVALS.filter(f=>f.date===date);
+              return(
+                <div key={date} style={{marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                    <span style={{fontSize:12,fontWeight:700,color:HK.textMid}}>
+                      {date==="未指定日期"?"📋 未指定日期":"📅 "+date}
+                      {dayFests.map(f=><span key={f.name} style={{marginLeft:6,fontSize:14}} title={f.name}>{f.icon}</span>)}
+                    </span>
+                    <div style={{flex:1,height:1,background:"#FFB7D1"}}/>
+                    <span style={{fontSize:11,color:HK.light}}>{dayItems.length} 項</span>
+                  </div>
+                  {dayItems.map(item=><ItemCard key={item.id} item={item} onEdit={it=>{setEditingItem(it);setShowForm(false);}} onDelete={id=>{setItems(prev=>prev.filter(it=>it.id!==id));if(editingItem&&editingItem.id===id)setEditingItem(null);}} todayFestivals={date===currentDate?todayFestivals:dayFests}/>)}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {tab==="flight"&&<FlightHotelTab/>}
+        {tab==="emergency"&&<EmergencyTab/>}
+        {tab==="tips"&&<TravelTipsTab/>}
+      </div>
+
+      {/* Bottom Tab Bar */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,background:"white",borderTop:"2px solid #FFD6E7",boxShadow:"0 -4px 20px rgba(255,79,130,0.12)"}}>
+        <div style={{maxWidth:480,margin:"0 auto",display:"flex"}}>
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"10px 4px 8px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+              <span style={{fontSize:20}}>{t.icon}</span>
+              <span style={{fontSize:10,fontWeight:700,color:tab===t.id?HK.primary:"#FFB7D1"}}>{t.label}</span>
+              {tab===t.id&&<div style={{width:22,height:3,borderRadius:3,background:HK.primary,marginTop:1}}/>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<BangkokPlanner />);
+</script>
+</body>
+</html>
